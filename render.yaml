@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: pictrace
+    runtime: docker
+    healthCheckPath: /health
+    envVars:
+      - key: DASHSCOPE_API_KEY
+        sync: false
+      - key: VISION_BASE_URL
+        sync: false
+      - key: VISION_MODEL
+        value: qwen3-vl-plus
+      - key: SERPAPI_KEY
+        sync: false
+      - key: PICTRACE_API_TOKEN
+        generateValue: true
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://393535466-dev.github.io

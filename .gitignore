@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+uploads/*
+!uploads/.gitkeep
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+legacy/

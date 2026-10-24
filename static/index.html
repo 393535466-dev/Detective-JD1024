@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>图迹 PicTrace · 地点线索调查</title><link rel="stylesheet" href="./style.css"><script src="./app.js" defer></script></head>
+<body><main>
+  <header><strong>图迹 <small>PicTrace</small></strong><span id="status">连接调查服务…</span></header>
+  <section class="intro"><div class="eyebrow">FOLLOW THE CLUES</div><h1>一张照片。<br>顺着细节，找出处。</h1><p>店招、建筑、山景和街道。提取看得见的线索，找到公开来源，逐项核对候选地点。</p></section>
+  <form id="form" class="panel">
+    <label class="upload">选择调查图片<input id="file" type="file" accept="image/jpeg,image/png,image/webp" required><small>JPG / PNG / WebP · 最大 20MB、1600 万像素</small></label>
+    <div class="fields"><label>想核对的地点（可选）<input id="location" maxlength="300" placeholder="例如：杭州某餐厅；也可以留空"></label><label>服务访问令牌（如已设置）<input id="token" type="password" autocomplete="off" placeholder="由后端部署者设置，非模型 API Key"></label></div>
+    <details><summary>连接与细节设置（可选）</summary><label>后端服务地址<input id="backend" type="url" placeholder="https://你的后端域名；本地同源运行可留空"></label><p>GitHub Pages 发布时需填写已部署的后端地址。令牌只会发送到该地址，请先确认域名。</p><p>手动裁剪使用 0–1000 相对坐标填写 [左,上,右,下]，最多两个。留空由模型选择。</p><textarea id="crops" rows="3" placeholder='[{"label":"店招","bbox":[100,100,600,400]}]'></textarea></details>
+    <p class="hint">开始后，图片与细节裁剪将发送至已配置的视觉模型和搜图服务。此服务器不保存上传原图或报告。</p>
+    <button id="submit" type="submit">开始调查 ↗</button>
+  </form>
+  <p id="error" class="error" role="alert" hidden></p><p id="progress" role="status" hidden>正在提取线索、搜索整图和细节，通常需要等待几十秒…</p>
+  <section id="report" aria-live="polite" hidden></section>
+  <footer>公共地点线索调查 · 证据不足时保留疑问 · <a id="apiDocs" href="/docs">API 文档</a></footer>
+</main></body></html>
