@@ -21,8 +21,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from pictrace import MAX_UPLOAD_BYTES, Crop, Providers, Settings, investigate
 
-load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env", override=True)
 logger = logging.getLogger("pictrace")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
@@ -146,4 +146,4 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
