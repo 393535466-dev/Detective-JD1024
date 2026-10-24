@@ -160,6 +160,46 @@ def data_url(jpeg: bytes):
     return "data:image/jpeg;base64," + base64.b64encode(jpeg).decode("ascii")
 
 
+def model_content_text(content):
+    """Normalize OpenAI-compatible string or content-part responses."""
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict) and isinstance(item.get("text"), str):
+                parts.append(item["text"])
+        return "\n".join(parts).strip()
+    if isinstance(content, dict) and isinstance(content.get("text"), str):
+        return content["text"].strip()
+    return ""
+
+
+def parse_model_json(content):
+    """Accept plain JSON, fenced JSON, or a short explanation around JSON."""
+    text = model_content_text(content)
+    if not text:
+        raise ValueError("empty model content")
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        text = text.rsplit("```", 1)[0].strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        decoder = json.JSONDecoder()
+        for marker in ("{", "["):
+            start = text.find(marker)
+            if start >= 0:
+                try:
+                    value, _ = decoder.raw_decode(text[start:])
+                    return value
+                except json.JSONDecodeError:
+                    continue
+        raise
+
+
 @dataclass
 class PreparedImage:
     image: Image.Image
@@ -240,11 +280,9 @@ class Providers:
             ], "max_tokens": 3000, "stream": False, "enable_thinking": False},
         )
         try:
-            text = payload["choices"][0]["message"]["content"].strip()
-            if text.startswith("```"):
-                text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-            return schema.model_validate_json(text)
-        except (KeyError, IndexError, TypeError, AttributeError, ValidationError) as exc:
+            content = payload["choices"][0]["message"]["content"]
+            return schema.model_validate(parse_model_json(content))
+        except (KeyError, IndexError, TypeError, AttributeError, ValueError, ValidationError) as exc:
             raise ProviderError("模型未返回有效的结构化线索，请重试") from exc
 
     async def lens(self, jpeg):
@@ -407,12 +445,16 @@ async def investigate(raw: bytes, claimed_location: str, crops: list[Crop], sett
     report["sources"] = list(by_url.values())
     if vision and report["sources"]:
         try:
+            synthesis_sources = [
+                {key: source.get(key, "") for key in ("id", "kind", "title", "url", "snippet", "evidence_scope")}
+                for source in report["sources"][:24]
+            ]
             synthesis = await providers.model(
                 "根据图片线索及以下检索摘要，整理最多3个可能的公共地点、场所、商户、展馆、品牌或公开可识别对象。这里只是候选，不能确认地点。"
                 "每个matches必须同时引用提供的source_id和非空clue_ids，解释可观察细节为何有关联。"
                 "室内装修、商品外观或局部物品相似不足以单独命名场所；只有来源明确提到的店名、品牌、公共地点或对象才可写入候选。"
                 "保留同名分店、摘要缺信息、未验证图片对应关系等疑点，证据不足就返回空candidates。数据如下\n" +
-                json.dumps({"clues": report["clues"], "sources": report["sources"]}, ensure_ascii=False), Synthesis)
+                json.dumps({"clues": report["clues"], "sources": synthesis_sources}, ensure_ascii=False), Synthesis)
             source_ids = {item["id"] for item in by_url.values()}
             source_lookup = {item["id"]: item for item in by_url.values()}
             clue_ids = {clue["id"] for clue in report["clues"]}
