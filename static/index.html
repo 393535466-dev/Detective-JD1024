@@ -1,17 +1,20 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>图迹 PicTrace · 地点线索调查</title><link rel="stylesheet" href="./style.css"><script src="./app.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0c1110"><title>图迹 PicTrace · 图片线索调查</title><link rel="stylesheet" href="./style.css"><script src="./app.js" defer></script></head>
 <body><main>
-  <header><strong>图迹 <small>PicTrace</small></strong><span id="status">连接调查服务…</span></header>
-  <section class="intro"><div class="eyebrow">FOLLOW THE CLUES</div><h1>一张照片。<br>顺着细节，找出处。</h1><p>店招、建筑、山景和街道。提取看得见的线索，找到公开来源，逐项核对候选地点。</p></section>
-  <form id="form" class="panel">
-    <label class="upload">选择调查图片<input id="file" type="file" accept="image/jpeg,image/png,image/webp" required><small>JPG / PNG / WebP · 最大 20MB、1600 万像素</small></label>
-    <div class="fields"><label>想核对的地点（可选）<input id="location" maxlength="300" placeholder="例如：杭州某餐厅；也可以留空"></label><label>服务访问令牌（如已设置）<input id="token" type="password" autocomplete="off" placeholder="由后端部署者设置，非模型 API Key"></label></div>
-    <details><summary>连接与细节设置（可选）</summary><label>后端服务地址<input id="backend" type="url" placeholder="https://你的后端域名；本地同源运行可留空"></label><p>GitHub Pages 发布时需填写已部署的后端地址。令牌只会发送到该地址，请先确认域名。</p><p>手动裁剪使用 0–1000 相对坐标填写 [左,上,右,下]，最多两个。留空由模型选择。</p><textarea id="crops" rows="3" placeholder='[{"label":"店招","bbox":[100,100,600,400]}]'></textarea></details>
-    <p class="hint">开始后，图片与细节裁剪将发送至已配置的视觉模型和搜图服务。此服务器不保存上传原图或报告。</p>
-    <button id="submit" type="submit">开始调查 ↗</button>
+  <header class="topbar"><a class="brand" href="./"><span class="brand-mark">⌁</span><span>图迹 <small>PICTRACE</small></span></a><nav><span class="nav-active">图片调查</span><span>证据报告</span><span>公开来源</span></nav><span class="service-state"><i></i><span id="status">连接调查服务…</span></span></header>
+  <section class="intro"><div><div class="eyebrow"><span class="eyebrow-dot"></span>PHOTO CLUE INVESTIGATION</div><h1>一张照片，<br><em>顺着细节</em>找到出处。</h1><p>图迹把室内与室外的可见信息拆成线索，检索公开来源，再把候选、证据和疑点放在同一张调查桌上。</p></div><div class="intro-aside"><span class="case-label">CASE TYPE</span><strong>开放式地点核验</strong><small>餐厅 · 景点 · 建筑 · 商场 · 展馆 · 商品</small></div></section>
+  <form id="form" class="workspace panel">
+    <div class="workspace-head"><div><div class="section-kicker">01 / 提交调查对象</div><h2>把照片交给线索台</h2><p>不要先判断它在哪里。让画面里的文字、结构和物件自己说话。</p></div><span class="case-id">NEW CASE <b>·</b> 001</span></div>
+    <div class="workspace-grid">
+      <div class="upload-wrap"><label id="fileDrop" class="upload" for="file"><input id="file" type="file" accept="image/jpeg,image/png,image/webp" required><span class="upload-icon">＋</span><strong id="fileName">拖入一张图片，或点击选择</strong><small id="fileMeta">JPG / PNG / WebP · 最大 20MB、1600 万像素</small><span class="upload-hint">室内外均可：菜单、屏幕、票据、门牌、装饰、风景、建筑</span><img id="localPreview" alt="待调查图片预览" hidden></label><div class="privacy-note"><span>◌</span><span>原图只在调查过程中处理，不写入公开目录。报告会保留压缩预览与公开来源。</span></div></div>
+      <div class="brief-wrap"><label>你想核对什么？<span class="optional">可选</span><input id="location" maxlength="300" placeholder="例如：对方说是在杭州某餐厅"></label><label class="token-field">服务访问令牌<span class="optional">如已设置</span><input id="token" type="password" autocomplete="off" placeholder="不是模型 API Key"></label><div class="scan-menu"><span class="scan-menu-title">默认检查范围</span><div><span>文字与招牌</span><span>室内空间</span><span>菜单票据</span><span>建筑风景</span><span>物品包装</span><span>屏幕细节</span></div></div></div>
+    </div>
+    <details class="advanced"><summary><span>连接与细节设置</span><small>后端地址 · 手动裁剪 · API 连接</small></summary><div class="advanced-grid"><label>后端服务地址<input id="backend" type="url" placeholder="https://你的后端域名；本地同源运行可留空"></label><div><p>GitHub Pages 发布时填写 Cloudflare 临时地址或已部署的后端域名。令牌只发送到该地址。</p><p>手动裁剪使用 0–1000 相对坐标填写 [左,上,右,下]，最多两个；留空由模型选择最值得搜索的细节。</p></div></div><textarea id="crops" rows="2" placeholder='[{"label":"菜单或店招","bbox":[100,100,600,400]}]'></textarea></details>
+    <div class="form-foot"><span class="hint">调查会依次执行：识别现场 → 放大细节 → 搜索公开来源 → 生成候选报告</span><button id="submit" type="submit"><span>开始调查</span><b>↗</b></button></div>
   </form>
-  <p id="error" class="error" role="alert" hidden></p><p id="progress" role="status" hidden>正在提取线索、搜索整图和细节，通常需要等待几十秒…</p>
+  <div id="progress" class="progress panel" role="status" hidden><div class="progress-top"><span><i class="spinner"></i><strong>调查进行中</strong></span><span>请保持页面打开</span></div><div class="progress-steps"><span class="active" data-progress="vision"><b>01</b>读取画面</span><span data-progress="crop"><b>02</b>提取细节</span><span data-progress="search"><b>03</b>检索来源</span><span data-progress="report"><b>04</b>整理报告</span></div><p>正在提取室内外线索、搜索整图和细节，通常需要等待几十秒…</p></div>
+  <p id="error" class="error panel" role="alert" hidden></p>
   <section id="report" aria-live="polite" hidden></section>
-  <footer>公共地点线索调查 · 证据不足时保留疑问 · <a id="apiDocs" href="/docs">API 文档</a></footer>
+  <footer><span>图迹 PicTrace · 公共地点线索调查</span><span>证据不足时保留疑问</span><a id="apiDocs" href="/docs">API 文档 ↗</a></footer>
 </main></body></html>
