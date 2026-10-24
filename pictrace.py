@@ -76,7 +76,10 @@ class Crop(BaseModel):
 
 
 class Clue(BaseModel):
-    kind: Literal["text", "landmark", "architecture", "landscape", "other"]
+    kind: Literal[
+        "text", "landmark", "architecture", "landscape", "interior",
+        "screen", "menu", "receipt", "object", "product", "decoration", "other"
+    ]
     observation: str = Field(min_length=1, max_length=250)
     bbox: list[float] | None = None
 
@@ -331,10 +334,12 @@ async def investigate(raw: bytes, claimed_location: str, crops: list[Crop], sett
     if settings.vision_ready:
         try:
             vision = await providers.model(
-                "观察图片中的公共地点线索，区分实际可见文字与推测。不要猜具体地名。"
-                "返回场景、最多8条可观察线索及其bbox（[左,上,右,下]，0到1000的相对坐标）。"
-                "search_queries 最多2项，仅依据可见店招/地标；place_names 仅填写明确读到的公共店铺/景点名称。"
-                "无法识别的文字留空；不能从人脸、车牌推断个人身份。", VisionResult, prepared.jpeg)
+                "观察整张图片中的所有可见环境线索，不要只寻找室外地标。图片可能来自室内、室外、商场、餐厅、酒店、展馆、办公室、交通空间、住宅公共区域、街道或自然景观。"
+                "重点检查并区分实际可见文字与推测：店招、门牌、菜单、票据、屏幕、包装、商品、海报、墙面标识、独特家具、装饰、材质、建筑结构、窗外景色、道路设施和地标。"
+                "返回场景、最多8条可观察线索及其bbox（[左,上,右,下]，0到1000的相对坐标）。每条线索选择最贴切的类型：text、landmark、architecture、landscape、interior、screen、menu、receipt、object、product、decoration 或 other。"
+                "search_queries 最多2项，只能由图片中实际看见的文字、物品组合或环境特征组成；place_names 仅填写明确读到的公共店铺、景点、场馆或品牌名称。"
+                "对于室内图，优先组合‘可见文字 + 空间细节 + 物品/装饰’形成检索词；没有可读文字时，保留不确定性，不要猜具体地名。"
+                "无法识别的文字留空；不能从人脸、车牌、私人物品推断个人身份、住址或行踪。", VisionResult, prepared.jpeg)
             report["scene"] = vision.scene
             report["clues"] = [{"id": f"C{i+1}", **clue.model_dump()} for i, clue in enumerate(vision.clues)]
             report["limitations"].extend(vision.limitations)
@@ -347,7 +352,10 @@ async def investigate(raw: bytes, claimed_location: str, crops: list[Crop], sett
     crop_inputs = [(box, None) for box in crops]
     if not crop_inputs and vision:
         for clue in report["clues"]:
-            if clue["bbox"] and clue["kind"] in {"text", "landmark", "architecture"}:
+            if clue["bbox"] and clue["kind"] in {
+                "text", "landmark", "architecture", "interior", "screen", "menu",
+                "receipt", "object", "product", "decoration"
+            }:
                 try:
                     crop_inputs.append((Crop(label=clue["observation"][:80], bbox=clue["bbox"]), clue["id"]))
                 except ValidationError:
@@ -400,9 +408,9 @@ async def investigate(raw: bytes, claimed_location: str, crops: list[Crop], sett
     if vision and report["sources"]:
         try:
             synthesis = await providers.model(
-                "根据图片线索及以下检索摘要，整理最多3个可能的公共地点。这里只是候选，不能确认地点。"
+                "根据图片线索及以下检索摘要，整理最多3个可能的公共地点、场所、商户、展馆、品牌或公开可识别对象。这里只是候选，不能确认地点。"
                 "每个matches必须同时引用提供的source_id和非空clue_ids，解释可观察细节为何有关联。"
-                "单纯室内装修相似不足以命名场所；来源未提到的店名/城市不能编造。"
+                "室内装修、商品外观或局部物品相似不足以单独命名场所；只有来源明确提到的店名、品牌、公共地点或对象才可写入候选。"
                 "保留同名分店、摘要缺信息、未验证图片对应关系等疑点，证据不足就返回空candidates。数据如下\n" +
                 json.dumps({"clues": report["clues"], "sources": report["sources"]}, ensure_ascii=False), Synthesis)
             source_ids = {item["id"] for item in by_url.values()}
