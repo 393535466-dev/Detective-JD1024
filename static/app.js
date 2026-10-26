@@ -8,9 +8,28 @@ let report = null;
 let progressTimer = null;
 let previewURL = null;
 
+function connectionError(error) {
+  const message = String(error?.message || '');
+  if (message.includes('file://')) return message;
+  if (error?.name === 'TypeError' || /failed to fetch|networkerror|load failed/i.test(message)) {
+    return '无法连接调查后端。请打开线上部署地址，不要直接双击 static/index.html；或在“连接设置”中填写后端 HTTPS 地址。';
+  }
+  return message || '调查服务暂时无法连接，请检查后端地址和访问令牌。';
+}
+
+async function responseJSON(response) {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return {detail: `后端返回了非 JSON 响应（HTTP ${response.status}），请检查 Vercel 部署状态`};
+  }
+}
+
 function apiURL(path) {
   const value = $('backend').value.trim();
   if (!value) {
+    if (location.protocol === 'file:') throw new Error('当前页面是 file:// 本地预览，不能直接调用图片搜索接口。请打开线上部署地址，或在“连接设置”中填写后端 HTTPS 地址。');
     if (location.hostname.endsWith('.github.io')) throw new Error('请在连接与细节设置中填写已部署的后端地址');
     return path;
   }
@@ -25,11 +44,11 @@ async function status() {
     const endpoint = apiURL('/api/status'); $('apiDocs').href = apiURL('/docs');
     const response = await fetch(endpoint, {headers:auth(), redirect:'error'});
     if (response.status === 401) { $('status').textContent = '服务在线 · 需要访问令牌'; return; }
-    if (!response.ok) throw new Error();
-    const data = await response.json();
+    if (!response.ok) throw new Error(`服务返回 HTTP ${response.status}`);
+    const data = await responseJSON(response);
     $('status').textContent = data.missing_required.length ? '服务在线 · API 待配置' : '调查接口已配置';
     document.querySelector('.service-state i').style.background = data.missing_required.length ? 'var(--gold)' : 'var(--accent)';
-  } catch (error) { $('status').textContent = error.message.includes('后端') ? error.message : '服务暂时无法连接'; }
+  } catch (error) { $('status').textContent = connectionError(error); }
 }
 
 function openSettings() {
@@ -92,10 +111,10 @@ $('form').addEventListener('submit', async event => {
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 160000);
   try {
     const response = await fetch(apiURL('/api/investigate'), {method:'POST', body, headers:auth(), signal:controller.signal, redirect:'error'});
-    const data = await response.json();
-    if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '请求格式无效，请检查图片和输入');
+    const data = await responseJSON(response);
+    if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `调查服务返回 HTTP ${response.status}`);
     report = data; render(data);
-  } catch (error) { $('error').textContent = error.name === 'AbortError' ? '调查超时，请稍后重试' : error.message; $('error').hidden = false; }
+  } catch (error) { $('error').textContent = error.name === 'AbortError' ? '调查超时，请稍后重试' : connectionError(error); $('error').hidden = false; }
   finally { clearTimeout(timer); stopProgress(); $('submit').disabled = false; $('newCase').disabled = false; }
 });
 
