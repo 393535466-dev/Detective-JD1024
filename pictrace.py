@@ -546,7 +546,8 @@ async def investigate(raw: bytes, claimed_location: str, crops: list[Crop], sett
         except ProviderError as exc:
             report["steps"].append({"name": "vision", "status": "failed", "message": str(exc)})
     else:
-        report["steps"].append({"name": "vision", "status": "not_configured"})
+        report["steps"].append({"name": "vision", "status": "not_configured",
+                                 "message": "未配置图像理解服务，无法从图片提取店招、Logo和地点线索"})
 
     # Inspect overlapping original-image tiles so distant signage gets its own pass.
     if vision:
@@ -663,7 +664,8 @@ async def investigate(raw: bytes, claimed_location: str, crops: list[Crop], sett
             for i, query in enumerate(queries):
                 jobs.append(search_step(f"keyword_{i+1}", providers.keyword(query), query=query))
     else:
-        report["steps"].append({"name": "image_search", "status": "not_configured"})
+        report["steps"].append({"name": "image_search", "status": "not_configured",
+                                 "message": "未配置 SERPAPI_KEY，无法执行图片搜索和关键词检索"})
     if settings.amap_key and vision:
         for i, name in enumerate(dict.fromkeys(p.strip()[:100] for p in vision.place_names if p.strip())):
             jobs.append(search_step(f"poi_{i+1}", providers.places(name), query=name))

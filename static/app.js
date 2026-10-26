@@ -119,6 +119,18 @@ $('form').addEventListener('submit', async event => {
 });
 
 function statusLabel(value) { return {complete:'完成',failed:'失败',not_configured:'待配置',skipped:'跳过',no_results:'无结果'}[value] || value || '未知'; }
+function diagnosticSteps(data) {
+  const config = data.configuration || {};
+  const steps = data.steps || [];
+  const problems = steps.filter(step => ['failed', 'not_configured', 'no_results'].includes(step.status));
+  if (problems.length) return problems.slice(0, 4).map(step => {
+    const label = step.name.startsWith('lens_') ? '图片搜索' : step.name.startsWith('keyword_') ? '关键词检索' : step.name === 'vision' ? '图片理解' : step.name;
+    const message = step.message || (step.status === 'no_results' ? '服务已响应，但没有返回可引用来源' : `步骤${statusLabel(step.status)}`);
+    return `<li><strong>${esc(label)}</strong><span>${esc(message)}</span>${step.query ? `<code>${esc(step.query)}</code>` : ''}</li>`;
+  }).join('');
+  if (!config.image_search && !config.missing_required?.length) return '<li><strong>图片搜索</strong><span>SerpAPI 未配置，无法检索公开来源</span></li>';
+  return '';
+}
 function sourceLink(source) { const url = webURL(source.url); return url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(source.title || '打开公开来源')} ↗</a>` : esc(source.id); }
 function sourceImage(source) {
   const thumbnail = webURL(source.thumbnail) || webURL(source.image_url);
@@ -150,6 +162,8 @@ function selectHighlights(data) {
 
 function render(data) {
   const {featured, remaining, selected, other, lookup} = selectHighlights(data);
+  const diagnostics = diagnosticSteps(data);
+  const clueHTML = (data.clues || []).slice(0, 8).map(clue => `<li><strong>${esc(clue.search_text || clue.observation)}</strong><span>${esc(clue.observation)}${clue.geolocation_value === 'high' ? ' · 值得优先检索' : ''}</span></li>`).join('');
   const candidateHTML = candidate => {
     const matches = (candidate.matches || []).filter(m => lookup[m.source_id]);
     const links = [...new Set(matches.map(m => m.source_id))].slice(0,2);
@@ -157,6 +171,8 @@ function render(data) {
   };
   const sourceHTML = source => `<article class="source-result">${sourceImage(source)}<div>${sourceLink(source)}${source.snippet ? `<p>${esc(source.snippet.slice(0,180))}</p>` : ''}<small>${esc({exact_match:'原图匹配',visual_match:'相似图片',web_search:'网页来源',map_poi:'地图记录'}[source.kind] || '公开来源')}</small></div></article>`;
   $('report').innerHTML = `<div class="simple-report-head"><div><div class="section-kicker">SEARCH RESULTS</div><h2>发现的线索</h2></div><button id="export" type="button" class="text-button">导出 / Export ↓</button></div>
+    ${diagnostics ? `<section class="diagnostics panel"><div><strong>调查没有完整跑完</strong><small>为什么没有结果 / Diagnosis</small></div><ul>${diagnostics}</ul><p>先检查 Vercel 的 Production 环境变量和 API 额度；如果服务刚改过变量，需要重新部署。</p></section>` : ''}
+    ${clueHTML ? `<section class="panel clue-summary"><div class="card-head"><h3>已提取的图片线索 <small>Image clues</small></h3><small>${(data.clues || []).length} 条</small></div><ul>${clueHTML}</ul></section>` : ''}
     <section class="panel result-main">${featured.length ? featured.map(candidateHTML).join('') : '<div class="empty-result"><h3>还没有足够证据确认地点</h3><p>可以先查看相关来源，或补充一张文字更清晰的照片。</p></div>'}</section>
     ${data.status !== 'complete' ? '<p class="result-caveat">部分分析尚未完成，当前展示已有结果。</p>' : ''}
     ${selected.length ? `<section class="selected-sources"><div class="card-head"><h3>相关来源 <small>Selected sources</small></h3><small>精选 ${selected.length} 条 / 共 ${(data.sources || []).length} 条</small></div>${selected.map(sourceHTML).join('')}</section>` : '<p class="result-caveat">暂未检索到可引用来源。</p>'}

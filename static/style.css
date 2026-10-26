@@ -108,6 +108,21 @@ textarea::placeholder, input::placeholder { color: #b5b6b0; }
 .progress-steps b { margin-right: 6px; font-size: 9px; }
 .progress p { color: var(--faint); font-size: 10px; }
 .error { color: var(--danger); background: #fff8f6; font-size: 12px; }
+.diagnostics { margin-bottom: 15px; padding: 16px 18px; border: 1px solid #e3d9c3; border-radius: 12px; background: #fffdf7; }
+.diagnostics > div { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.diagnostics strong { font-size: 12px; font-weight: 500; }
+.diagnostics small { color: var(--faint); font-size: 10px; }
+.diagnostics ul { margin: 11px 0 0; padding: 0; list-style: none; }
+.diagnostics li { display: grid; grid-template-columns: 100px 1fr; gap: 6px 12px; padding: 8px 0; border-top: 1px solid #eee8da; color: #74746d; font-size: 11px; }
+.diagnostics li strong { color: #6e5f43; font-weight: 500; }
+.diagnostics li code { grid-column: 2; overflow: hidden; color: #9c8d70; font: 10px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.diagnostics p { margin: 10px 0 0; color: #a09682; font-size: 10px; }
+.clue-summary { margin-bottom: 15px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.clue-summary ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 18px; margin: 11px 0 0; padding: 0; list-style: none; }
+.clue-summary li { min-width: 0; padding-top: 8px; border-top: 1px solid var(--soft-line); }
+.clue-summary li strong, .clue-summary li span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clue-summary li strong { color: #4f6358; font-size: 11px; font-weight: 500; }
+.clue-summary li span { margin-top: 3px; color: var(--muted); font-size: 10px; }
 
 footer { display: flex; justify-content: space-between; gap: 18px; width: min(1080px, 100%); margin: 114px auto 0; padding-top: 15px; border-top: 1px solid var(--soft-line); color: var(--faint); font-size: 10px; }
 footer a { color: #71746d; }
