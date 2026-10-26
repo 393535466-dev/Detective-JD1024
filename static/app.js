@@ -6,6 +6,7 @@ const preview = value => typeof value === 'string' && /^data:image\/jpeg;base64,
 const auth = () => $('token').value.trim() ? {'Authorization':'Bearer ' + $('token').value.trim()} : {};
 let report = null;
 let progressTimer = null;
+let previewURL = null;
 
 function apiURL(path) {
   const value = $('backend').value.trim();
@@ -31,61 +32,58 @@ async function status() {
   } catch (error) { $('status').textContent = error.message.includes('后端') ? error.message : '服务暂时无法连接'; }
 }
 
+function openSettings() {
+  const panel = $('connectionSettings');
+  if (!panel) return;
+  panel.open = !panel.open;
+  if (panel.open) panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+if ($('openSettings')) $('openSettings').addEventListener('click', openSettings);
+if ($('newCase')) $('newCase').addEventListener('click', () => {
+  if ($('submit').disabled) return;
+  $('file').value = ''; $('location').value = ''; $('crops').value = '';
+  if (previewURL) URL.revokeObjectURL(previewURL);
+  previewURL = null; $('localPreview').removeAttribute('src'); $('localPreview').hidden = true;
+  $('fileName').textContent = '拖入一张图片，或点击选择'; $('fileMeta').textContent = 'JPG / PNG / WebP · 最大 20MB';
+  $('report').hidden = true; $('error').hidden = true; document.body.classList.remove('has-report'); report = null;
+  window.scrollTo({top:0, behavior:'smooth'});
+});
 function setFile(file) {
   if (!file) return;
-  $('fileName').textContent = file.name;
-  $('fileMeta').textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB · ${file.type || '图片文件'}`;
-  const url = URL.createObjectURL(file);
-  const image = $('localPreview'); image.src = url; image.hidden = false;
+  $('fileName').textContent = file.name; $('fileMeta').textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB · ${file.type || '图片文件'}`;
+  if (previewURL) URL.revokeObjectURL(previewURL);
+  previewURL = URL.createObjectURL(file); const image = $('localPreview'); image.src = previewURL; image.hidden = false;
 }
-
 $('file').addEventListener('change', event => setFile(event.target.files[0]));
 const drop = $('fileDrop');
 ['dragenter','dragover'].forEach(type => drop.addEventListener(type, event => { event.preventDefault(); drop.classList.add('dragging'); }));
 ['dragleave','drop'].forEach(type => drop.addEventListener(type, event => { event.preventDefault(); drop.classList.remove('dragging'); }));
 drop.addEventListener('drop', event => { const file = event.dataTransfer.files[0]; if (!file) return; const transfer = new DataTransfer(); transfer.items.add(file); $('file').files = transfer.files; setFile(file); });
 $('token').addEventListener('change', status); $('backend').addEventListener('change', status); status();
-
-function startProgress() {
-  const box = $('progress'); box.hidden = false;
-  const stages = [...document.querySelectorAll('[data-progress]')]; let index = 0;
-  stages.forEach((stage, i) => stage.classList.toggle('active', i === 0));
-  clearInterval(progressTimer);
-  progressTimer = setInterval(() => { index = Math.min(index + 1, stages.length - 1); stages.forEach((stage, i) => stage.classList.toggle('active', i === index)); }, 11000);
-}
+document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => { $('location').value = button.dataset.prompt || ''; $('location').focus(); }));
+function startProgress() { const box = $('progress'); box.hidden = false; const stages = [...document.querySelectorAll('[data-progress]')]; let index = 0; stages.forEach((stage, i) => stage.classList.toggle('active', i === 0)); clearInterval(progressTimer); progressTimer = setInterval(() => { index = Math.min(index + 1, stages.length - 1); stages.forEach((stage, i) => stage.classList.toggle('active', i === index)); }, 11000); }
 function stopProgress() { clearInterval(progressTimer); $('progress').hidden = true; }
-
 $('form').addEventListener('submit', async event => {
-  event.preventDefault();
-  const file = $('file').files[0]; if (!file) return;
-  $('error').hidden = true; $('report').hidden = true;
+  event.preventDefault(); const file = $('file').files[0]; if (!file) return; $('error').hidden = true; $('report').hidden = true;
   if (file.size > 20*1024*1024) { $('error').textContent = '图片不能超过 20MB'; $('error').hidden = false; return; }
-  $('submit').disabled = true; startProgress();
-  const body = new FormData(); body.append('file', file); body.append('claimed_location', $('location').value); body.append('crops', $('crops').value.trim() || '[]');
+  $('submit').disabled = true; startProgress(); const body = new FormData(); body.append('file', file); body.append('claimed_location', $('location').value); body.append('crops', $('crops').value.trim() || '[]');
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 160000);
-  try {
-    const response = await fetch(apiURL('/api/investigate'), {method:'POST', body, headers:auth(), signal:controller.signal, redirect:'error'});
-    const data = await response.json();
-    if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '请求格式无效，请检查图片和输入');
-    report = data; render(data);
-  } catch (error) { $('error').textContent = error.name === 'AbortError' ? '调查超时，请稍后重试' : error.message; $('error').hidden = false; }
+  try { const response = await fetch(apiURL('/api/investigate'), {method:'POST', body, headers:auth(), signal:controller.signal, redirect:'error'}); const data = await response.json(); if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '请求格式无效，请检查图片和输入'); report = data; render(data); }
+  catch (error) { $('error').textContent = error.name === 'AbortError' ? '调查超时，请稍后重试' : (error.message || '请求失败，请检查后端地址和服务状态'); $('error').hidden = false; }
   finally { clearTimeout(timer); stopProgress(); $('submit').disabled = false; }
 });
-
 function statusLabel(value) { return {complete:'完成',failed:'失败',not_configured:'待配置',skipped:'跳过',no_results:'无结果'}[value] || value || '未知'; }
-function sourceLink(source) { const url = webURL(source.url); return url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(source.id)} · ${esc(source.title || '打开公开来源')} ↗</a>` : esc(source.id); }
+function sourceLink(source) { const url = webURL(source.url); return url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(source.title || source.id || '打开公开来源')} ↗</a>` : esc(source.id); }
+function selectHighlights(data) {
+  const sources = data.sources || []; const lookup = Object.fromEntries(sources.map(source => [source.id, source]));
+  const weight = candidate => { const matches = (candidate.matches || []).filter(m => lookup[m.source_id]); const domains = new Set(matches.map(m => { try { return new URL(lookup[m.source_id].url).hostname; } catch { return ''; } }).filter(Boolean)); const clues = new Set(matches.flatMap(m => m.clue_ids || [])); return domains.size * 3 + clues.size; };
+  const candidates = [...(data.candidates || [])].sort((a,b) => weight(b) - weight(a)); const featured = candidates.slice(0, Math.max(1, Math.ceil(candidates.length * .3))); const cited = new Set(featured.flatMap(c => (c.matches || []).map(m => m.source_id))); const text = [...(data.clues || []).map(c => c.search_text || ''), ...featured.map(c => c.name)];
+  const score = source => (cited.has(source.id) ? 1000 : 0) + (source.kind === 'exact_match' ? 30 : 0) + text.reduce((n, term) => n + ((source.title || '') + (source.snippet || '')).includes(term) * 10, 0); const ordered = [...sources].sort((a,b) => score(b) - score(a)); const count = Math.min(5, Math.max(1, Math.ceil(sources.length * .3))); const eligible = featured.length ? ordered.filter(source => score(source) > 0) : ordered; const selected = eligible.slice(0,count); const selectedIDs = new Set(selected.map(source => source.id)); return {featured, remaining:candidates.slice(featured.length), selected, other:ordered.filter(source => !selectedIDs.has(source.id)), lookup};
+}
 function render(data) {
-  const sources = Object.fromEntries((data.sources || []).map(s => [s.id, s]));
-  const state = {complete:'调查流程完成',partial:'部分步骤完成',needs_configuration:'需要配置 API'};
-  const clueHTML = data.clues?.length ? data.clues.map(c => `<div class="clue-item"><span class="clue-id">${esc(c.id)}</span><span>${esc(c.observation)}</span></div>`).join('') : '<p class="report-scene">暂时没有可用的可观察线索。</p>';
-  const cropsHTML = data.crops?.length ? `<div class="crop-list">${data.crops.map(c => `<figure><img src="${esc(preview(c.preview))}" alt="${esc(c.label)}"><figcaption>${esc(c.label)}</figcaption></figure>`).join('')}</div>` : '';
-  const candidatesHTML = data.candidates?.length ? data.candidates.map((candidate, i) => `<article class="candidate"><div class="candidate-top"><span class="candidate-num">0${i+1}</span><div><h4>${esc(candidate.name)}</h4><p class="area">${esc(candidate.area || '公开来源中的公共对象')}</p></div><span class="badge">待核对</span></div>${(candidate.matches || []).map(match => `<p>${esc(match.explanation)} <small>· ${match.clue_ids.map(esc).join('、')}</small><br>${sourceLink(sources[match.source_id] || {id:match.source_id})}</p>`).join('')}<ul>${(candidate.uncertainties || []).map(u => `<li>${esc(u)}</li>`).join('')}</ul></article>`).join('') : '<p class="report-scene">证据不足，暂时无法给出具体候选。仍可查看公开来源和执行记录。</p>';
-  const sourcesHTML = data.sources?.length ? data.sources.map(source => `<article>${sourceLink(source)}<p>${esc(source.snippet || '该来源没有摘要')}</p><small>${esc(source.evidence_scope || '')}</small>${source.photos?.length ? `<p>${source.photos.filter(webURL).map((photo, i) => `<a href="${esc(webURL(photo))}" target="_blank" rel="noopener noreferrer">地图照片 ${i+1} ↗</a>`).join(' · ')}</p>` : ''}</article>`).join('') : '<p class="report-scene">尚无可引用公开来源。</p>';
-  const stepsHTML = (data.steps || []).map(step => `<div class="step-row"><span class="step-status ${step.status === 'failed' ? 'failed' : step.status === 'not_configured' ? 'pending' : ''}">${esc(statusLabel(step.status))}</span><code>${esc(step.name)}</code><span>${step.message ? esc(step.message) : ''}</span></div>`).join('');
-  $('report').innerHTML = `<div class="report-summary panel"><div><div class="section-kicker">02 / 调查报告</div><h2>${esc(data.summary || '调查结果')}</h2><p>${esc(state[data.status] || data.status || '')}${data.claimed_location ? ` · 需要核对：${esc(data.claimed_location)}` : ''}</p></div><div class="report-actions"><span class="report-stamp">${data.status === 'complete' ? '流程完成 · 结论仍待核对' : '保留疑点 · 需要继续调查'}</span><button id="export" type="button">导出 JSON ↓</button></div></div>
-+  <div class="report-grid"><section class="report-card panel"><div class="card-head"><h3>现场观察</h3><small>${esc(data.scene || '室内外环境')}</small></div><img class="report-photo" src="${esc(preview(data.image?.preview))}" alt="调查图片"><p class="report-scene">${esc(data.scene || '模型尚未返回场景描述')}</p><div class="clue-list">${clueHTML}</div>${cropsHTML}</section><section class="report-card panel"><div class="card-head"><h3>候选地点 / 对象</h3><small>引用来源才能进入列表</small></div>${candidatesHTML}</section></div>
-+  <section class="source-card panel"><div class="card-head"><h3>公开证据来源</h3><small>${data.sources?.length || 0} 条可追溯记录</small></div>${sourcesHTML}</section><section class="steps-card panel"><div class="card-head"><h3>调查路径与边界</h3><small>每一步都可回看</small></div>${stepsHTML || '<p class="report-scene">没有执行记录。</p>'}<ul class="limits">${(data.limitations || []).map(item => `<li>${esc(item)}</li>`).join('')}</ul></section>`;
-+  if (data.configuration?.missing_required?.length) $('report').insertAdjacentHTML('afterbegin', `<p class="error panel">待配置：${data.configuration.missing_required.map(esc).join('、')}</p>`);
-+  $('report').hidden = false;
-+  $('export').addEventListener('click', () => { const url = URL.createObjectURL(new Blob([JSON.stringify(report,null,2)], {type:'application/json;charset=utf-8'})); const a = document.createElement('a'); a.href = url; a.download = 'pictrace-report.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url),1000); });
-+}
+  const {featured, remaining, selected, other, lookup} = selectHighlights(data);
+  const candidateHTML = candidate => { const matches = (candidate.matches || []).filter(m => lookup[m.source_id]); const links = [...new Set(matches.map(m => m.source_id))].slice(0,2); return `<article class="simple-candidate"><div class="result-location"><h3>${esc(candidate.name)}</h3><span>${esc(candidate.area)}</span><small>待核对 · Possible match</small></div><p>${esc(matches[0]?.explanation || '找到相关公开记录，具体地点仍待核对。')}</p><div class="result-citations">${links.map(id => sourceLink(lookup[id])).join('')}</div>${candidate.uncertainties?.[0] ? `<p class="result-caveat">待确认：${esc(candidate.uncertainties[0])}</p>` : ''}</article>`; };
+  const sourceHTML = source => `<article class="source-result">${sourceImage(source)}<div>${sourceLink(source)}${source.snippet ? `<p>${esc(source.snippet.slice(0,180))}</p>` : ''}<small>${esc({exact_match:'原图匹配',visual_match:'相似图片',web_search:'网页来源',map_poi:'地图记录'}[source.kind] || '公开来源')}</small></div></article>`;
+  $('report').innerHTML = `<div class="simple-report-head"><div><div class="section-kicker">SEARCH RESULTS</div><h2>发现的线索</h2></div><button id="export" type="button" class="quiet-button">导出 / Export ↓</button></div><section class="panel result-main">${featured.length ? featured.map(candidateHTML).join('') : '<div class="empty-result"><h3>还没有足够证据确认地点</h3><p>可以先查看相关来源，或补充一张文字更清晰的照片。</p></div>'}</section>${data.status !== 'complete' ? '<p class="result-caveat">部分分析尚未完成，当前展示已有结果。</p>' : ''}${selected.length ? `<section class="selected-sources"><div class="card-head"><h3>相关来源 <small>Selected sources</small></h3><small>精选 ${selected.length} 条 / 共 ${(data.sources || []).length} 条</small></div>${selected.map(sourceHTML).join('')}</section>` : '<p class="result-caveat">暂未检索到可引用来源。</p>'}<details class="more-results"><summary>更多结果与细节 <span>View details</span></summary>${(data.searched_terms || []).length ? `<h3>实际检索词 <small>Searched terms</small></h3><div class="searched-terms">${data.searched_terms.map(term => `<span>${esc(term.text)}<small>${term.status === 'complete' ? term.result_count + ' 条结果' : term.status === 'no_results' ? '无结果' : '检索未完成'}</small></span>`).join('')}</div>` : ''}${remaining.map(candidateHTML).join('')}${(data.clues || []).length ? `<h3>图片线索 <small>Image clues</small></h3><ul class="limits">${data.clues.map(c => `<li>${esc(c.observation)}</li>`).join('')}</ul>` : ''}${other.map(sourceHTML).join('')}<h3>分析说明 <small>Notes</small></h3><ul class="limits">${(data.limitations || []).map(t => `<li>${esc(t)}</li>`).join('')}</ul><p class="result-caveat">按引用来源与线索关联排序，精选约前 30% 的结果，来源最多展示 5 条；排序不代表定位准确率。</p></details>`;
+  $('report').classList.add('report'); $('report').hidden = false; document.body.classList.add('has-report'); requestAnimationFrame(() => $('report').scrollIntoView({behavior:'smooth', block:'start'})); $('export').addEventListener('click', () => { const url = URL.createObjectURL(new Blob([JSON.stringify(data,null,2)], {type:'application/json;charset=utf-8'})); const a = document.createElement('a'); a.href = url; a.download = 'pictrace-report.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url),1000); });
+}
