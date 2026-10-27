@@ -138,6 +138,7 @@ class Match(BaseModel):
     source_id: str = Field(max_length=30)
     clue_ids: list[str] = Field(max_length=8)
     explanation: str = Field(max_length=500)
+    relationship: Literal["same_entity", "same_scene", "text_only", "unknown"] = "unknown"
 
 
 class Candidate(BaseModel):
@@ -717,14 +718,16 @@ async def investigate(raw: bytes, claimed_location: str, crops: list[Crop], sett
                 "区分观察、推测和检索摘要。品牌/Logo 匹配只能支持品牌，不能确认具体分店；同一物件和转载来源不能算独立佐证。"
                 "每个候选填写 contradictions（仅限有 source_id 与 clue_ids 的实际矛盾，无反证则为空）、falsification_questions（至少2个可推翻候选的问题）、spatial_checks（尚待核对的空间关系）、next_action（一个最有价值的动作）。"
                 "没有地图/街景工具执行记录，不得声称完成空间验证；无法验证写入 uncertainties，不编造置信度百分比。"
-                "根据图片线索及以下检索摘要，整理最多3个可能的公共地点、场所、商户、展馆、品牌或公开可识别对象。这里只是候选，不能确认地点。"
+                "结合原始照片、图片线索及以下检索摘要，整理最多3个可能的公共地点、场所、商户或展馆。这里只是候选，不能确认地点。"
                 "每个matches必须同时引用提供的source_id和非空clue_ids，解释可观察细节为何有关联。"
+                "每条match必须填写relationship：same_scene表示来源与照片有具体空间特征对应，same_entity表示相同实体商户或场所，text_only表示只匹配名字，unknown表示关系不明。"
+                "播客、歌曲、软件、公司官网的品牌释义不证明图中的实体店或地点；这些来源即便同名也只能标text_only，不能列为地点候选。不得用‘可能有线下店’或‘可能是品牌变体’补足缺失证据。"
                 "室内装修、商品外观或局部物品相似不足以单独命名场所；只有来源明确提到的店名、品牌、公共地点或对象才可写入候选。"
                 "name 请使用来源中实际出现的简短地名或店名原文，不拼接城市、街道、分店或说明；区域信息单独放 area。"
                 "同名词不等于同一对象：若图片是艺术/餐饮/零售空间而来源是音频设备、住宅区或其他不符业态，不得仅凭拼写一致列为候选。"
                 "搜索命中品牌总部地址不能推导照片所在城市；明确场景冲突的结果排除。"
                 "保留同名分店、摘要缺信息、未验证图片对应关系等疑点，证据不足就返回空candidates。数据如下\n" +
-                json.dumps({"clues": report["clues"], "spatial_observations": report.get("spatial_observations", []), "region_hypothesis": report.get("region_hypothesis", ""), "sources": synthesis_sources}, ensure_ascii=False), Synthesis)
+                json.dumps({"clues": report["clues"], "spatial_observations": report.get("spatial_observations", []), "region_hypothesis": report.get("region_hypothesis", ""), "sources": synthesis_sources}, ensure_ascii=False), Synthesis, prepared.jpeg)
             report["synthesis_diagnostics"] = {"source_ids": [s["id"] for s in synthesis_sources], "proposed_count": len(synthesis.candidates), "rejected": []}
             source_ids = {item["id"] for item in by_url.values()}
             source_lookup = {item["id"]: item for item in by_url.values()}
@@ -733,7 +736,12 @@ async def investigate(raw: bytes, claimed_location: str, crops: list[Crop], sett
                 valid_matches = []
                 for match in candidate.matches:
                     ids = list(dict.fromkeys(cid for cid in match.clue_ids if cid in clue_ids))
-                    if match.source_id in source_ids and ids:
+                    source = source_lookup.get(match.source_id)
+                    grounded = source and match.relationship != "text_only" and (
+                        match.relationship in {"same_entity", "same_scene"}
+                        or source["kind"] in {"visual_match", "exact_match", "map_poi"}
+                    )
+                    if match.source_id in source_ids and ids and grounded:
                         valid_matches.append({**match.model_dump(), "clue_ids": ids})
                 cited_text = " ".join(source_lookup[m["source_id"]]["title"] + " " + source_lookup[m["source_id"]]["snippet"] for m in valid_matches)
                 # A valid source ID alone must not license a made-up place name.

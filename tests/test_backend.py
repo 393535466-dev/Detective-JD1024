@@ -36,12 +36,13 @@ class FakeServices:
         if request.url.host == "vision.test":
             body = json.loads(request.content)
             has_image = any(c.get("type") == "image_url" for c in body["messages"][-1]["content"])
+            is_synthesis = '"candidates"' in body["messages"][-1]["content"][0]["text"]
             if self.bad_model:
                 return httpx.Response(200, json={"choices": [{"message": {"content": "not JSON"}}]})
             content = {
                 "scene": "街边咖啡馆", "clues": [{"kind": "text", "observation": "店招写着示例咖啡馆", "bbox": [10, 20, 700, 500]}],
                 "search_queries": ["示例咖啡馆"], "place_names": ["示例咖啡馆"], "limitations": [],
-            } if has_image else {"candidates": [
+            } if has_image and not is_synthesis else {"candidates": [
                 {"name": "示例咖啡馆", "area": "杭州市", "matches": [
                     {"source_id": "S1", "clue_ids": ["C1"], "explanation": "店名一致，分店待确认"},
                     {"source_id": "S999", "clue_ids": ["C1"], "explanation": "虚构引用应被剔除"},
@@ -103,6 +104,32 @@ class ImageTests(unittest.TestCase):
 
 
 class ApiTests(unittest.TestCase):
+    def test_name_only_web_hit_is_not_a_place_candidate(self):
+        class NameOnlyServices(FakeServices):
+            def __call__(self, request):
+                response = super().__call__(request)
+                if request.url.host == 'serpapi.com' and request.url.params.get('engine') == 'google_lens':
+                    return httpx.Response(200, json={'visual_matches': []})
+                if request.url.host == 'vision.test':
+                    prompt = json.loads(request.content)['messages'][-1]['content'][0]['text']
+                    if '"candidates"' in prompt:
+                        result = {'candidates': [{'name': '示例咖啡馆', 'matches': [
+                            {'source_id': 'S1', 'clue_ids': ['C1'], 'relationship': 'text_only',
+                             'explanation': '只有名字相同，没有实体场所对应证据'}]}]}
+                        return httpx.Response(200, json={'choices': [{'message': {'content': json.dumps(result)}}]})
+                return response
+        config = Settings(vision_key='test', vision_base_url='https://vision.test/v1', serpapi_key='test')
+        services = NameOnlyServices()
+        with TestClient(create_app(config, httpx.MockTransport(services))) as client:
+            data = client.post('/api/investigate', files={'file': ('test.jpg', image_bytes())}).json()
+        self.assertEqual(data['status'], 'complete')
+        self.assertTrue(data['sources'])
+        self.assertEqual(data['candidates'], [])
+        self.assertTrue(data['synthesis_diagnostics']['rejected'])
+        synthesis_requests = [json.loads(r.content) for r in services.requests if r.url.host == 'vision.test'
+                              and '"candidates"' in json.loads(r.content)['messages'][-1]['content'][0]['text']]
+        self.assertTrue(any(c['type'] == 'image_url' for c in synthesis_requests[0]['messages'][-1]['content']))
+
     def test_pages_origin_and_relative_assets(self):
         with patch.dict('os.environ', {'CORS_ALLOWED_ORIGINS': 'https://393535466-dev.github.io'}):
             with TestClient(create_app(Settings())) as client:

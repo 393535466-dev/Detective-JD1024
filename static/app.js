@@ -122,13 +122,13 @@ function statusLabel(value) { return {complete:'完成',failed:'失败',not_conf
 function diagnosticSteps(data) {
   const config = data.configuration || {};
   const steps = data.steps || [];
-  const problems = steps.filter(step => ['failed', 'not_configured', 'no_results'].includes(step.status));
+  const problems = steps.filter(step => ['failed', 'not_configured'].includes(step.status));
   if (problems.length) return problems.slice(0, 4).map(step => {
     const label = step.name.startsWith('lens_') ? '图片搜索' : step.name.startsWith('keyword_') ? '关键词检索' : step.name === 'vision' ? '图片理解' : step.name;
     const message = step.message || (step.status === 'no_results' ? '服务已响应，但没有返回可引用来源' : `步骤${statusLabel(step.status)}`);
     return `<li><strong>${esc(label)}</strong><span>${esc(message)}</span>${step.query ? `<code>${esc(step.query)}</code>` : ''}</li>`;
   }).join('');
-  if (!config.image_search && !config.missing_required?.length) return '<li><strong>图片搜索</strong><span>SerpAPI 未配置，无法检索公开来源</span></li>';
+  if (config.image_search === false && !config.missing_required?.length) return '<li><strong>图片搜索</strong><span>SerpAPI 未配置，无法检索公开来源</span></li>';
   return '';
 }
 function sourceLink(source) { const url = webURL(source.url); return url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(source.title || '打开公开来源')} ↗</a>` : esc(source.id); }
@@ -154,7 +154,8 @@ function selectHighlights(data) {
     + text.reduce((n, term) => n + ((source.title || '') + (source.snippet || '')).includes(term) * 10, 0);
   const ordered = [...sources].sort((a,b) => score(b) - score(a));
   const count = Math.min(5, Math.max(1, Math.ceil(sources.length * .3)));
-  const eligible = featured.length ? ordered.filter(source => score(source) > 0) : ordered;
+  const visual = ordered.filter(source => ['exact_match', 'visual_match'].includes(source.kind));
+  const eligible = [...new Map([...visual.slice(0, 3), ...ordered].map(source => [source.id, source])).values()];
   const selected = eligible.slice(0,count);
   const selectedIDs = new Set(selected.map(source => source.id));
   return {featured, remaining:candidates.slice(featured.length), selected, other:ordered.filter(source => !selectedIDs.has(source.id)), lookup};
@@ -171,7 +172,7 @@ function render(data) {
   };
   const sourceHTML = source => `<article class="source-result">${sourceImage(source)}<div>${sourceLink(source)}${source.snippet ? `<p>${esc(source.snippet.slice(0,180))}</p>` : ''}<small>${esc({exact_match:'原图匹配',visual_match:'相似图片',web_search:'网页来源',map_poi:'地图记录'}[source.kind] || '公开来源')}</small></div></article>`;
   $('report').innerHTML = `<div class="simple-report-head"><div><div class="section-kicker">SEARCH RESULTS</div><h2>发现的线索</h2></div><button id="export" type="button" class="text-button">导出 / Export ↓</button></div>
-    ${diagnostics ? `<section class="diagnostics panel"><div><strong>调查没有完整跑完</strong><small>为什么没有结果 / Diagnosis</small></div><ul>${diagnostics}</ul><p>先检查 Vercel 的 Production 环境变量和 API 额度；如果服务刚改过变量，需要重新部署。</p></section>` : ''}
+    ${diagnostics ? `<section class="diagnostics panel"><div><strong>部分步骤未完成</strong><small>执行说明 / Diagnosis</small></div><ul>${diagnostics}</ul><p>${(data.steps || []).some(step => step.status === 'not_configured') ? '请检查后端服务的 API 配置。' : '已保留成功步骤的线索和来源，可稍后重试。'}</p></section>` : ''}
     ${clueHTML ? `<section class="panel clue-summary"><div class="card-head"><h3>已提取的图片线索 <small>Image clues</small></h3><small>${(data.clues || []).length} 条</small></div><ul>${clueHTML}</ul></section>` : ''}
     <section class="panel result-main">${featured.length ? featured.map(candidateHTML).join('') : '<div class="empty-result"><h3>还没有足够证据确认地点</h3><p>可以先查看相关来源，或补充一张文字更清晰的照片。</p></div>'}</section>
     ${data.status !== 'complete' ? '<p class="result-caveat">部分分析尚未完成，当前展示已有结果。</p>' : ''}

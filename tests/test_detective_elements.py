@@ -15,7 +15,7 @@ class IndoorServices(FakeServices):
         body = json.loads(request.content)
         has_image = any(c.get('type') == 'image_url' for c in body['messages'][-1]['content'])
         content = json.loads(response.json()['choices'][0]['message']['content'])
-        if has_image:
+        if has_image and '"candidates"' not in body['messages'][-1]['content'][0]['text']:
             content.update(image_origin={'category':'screenshot','observations':['顶部可见状态栏']},
                            spatial_observations=['招牌位于入口左侧'], region_hypothesis='证据不足')
             content['clues'] = [
